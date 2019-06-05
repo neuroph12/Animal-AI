@@ -112,3 +112,17 @@ class Agent():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
+    ## intrinsic reward in progress...
+    def compute_intrinsic_reward(self, state, next_state, action):
+        state = torch.FloatTensor(state).to(self.device)
+        next_state = torch.FloatTensor(next_state).to(self.device)
+        action = torch.LongTensor(action).to(self.device)
+
+        action_onehot = torch.FloatTensor(len(action), self.output_size).to(self.device)
+        action_onehot.zero_()
+        action_onehot.scatter_(1, action.view(len(action), -1), 1)
+
+        real_next_state_feature, pred_next_state_feature, pred_action = self.icm([state, next_state, action_onehot])
+        intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='none').mean(-1)
+        return intrinsic_reward.data.cpu().numpy()
+
