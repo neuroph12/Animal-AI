@@ -7,6 +7,7 @@ import numpy as np
 from collections import deque
 import time
 import gym
+import argparse
 import agent
 from animalai.envs.arena_config import ArenaConfig
 from animalai.envs import UnityEnvironment
@@ -15,6 +16,10 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
+
+parser = argparse.ArgumentParser(description="Process parameters for experiment")
+parser.add_argument("--env_field", type=str, default='configs/exampleTraining.yaml') # 'configs/movingFood.yaml'が動かない.....。
+args = parser.parse_args()
 
 def get_state(obs):
     state = np.array(obs)
@@ -75,15 +80,11 @@ def train(env, n_episodes, render=False):
     env.close()
     return
 
-
 if __name__ == '__main__':
-
     env_path = 'env/AnimalAI'
     brain_name='Learner'
     train_mode=True
-    env_field = 'configs/justFood.yaml'
-    arena_config_in = ArenaConfig(env_field)
-
+    arena_config_in = ArenaConfig(args.env_field)
     # set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -95,10 +96,7 @@ if __name__ == '__main__':
     RENDER = False
     lr = 1e-4
     INITIAL_MEMORY = 10000
-
     agent = agent.Agent(action_size=9)
-    # create environment
     env=UnityEnvironment(file_name=env_path) 
-
     # train model
     train(env, 400)
