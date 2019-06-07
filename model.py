@@ -3,6 +3,11 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
+from torch.nn import init
+
+class Flatten(nn.Module):
+    def forward(self, input):
+        return input.view(input.size(0), -1)
 
 class DQN(nn.Module):
     def __init__(self, in_channels=3, action_size=9):
@@ -41,7 +46,7 @@ class ICMModel(nn.Module):
         feature_output = 7 * 7 * 64
         self.feature = nn.Sequential(
             nn.Conv2d(
-                in_channels=4,
+                in_channels=3,
                 out_channels=32,
                 kernel_size=8,
                 stride=4),
@@ -72,7 +77,7 @@ class ICMModel(nn.Module):
             nn.Linear(output_size + 512, 512),
             nn.LeakyReLU(),
             nn.Linear(512, 512),
-        ).to(self.device)] * 8
+        )] * 8
 
         self.forward_net_1 = nn.Sequential(
             nn.Linear(output_size + 512, 512),

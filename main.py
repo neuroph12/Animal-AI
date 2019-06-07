@@ -24,7 +24,7 @@ args = parser.parse_args()
 def get_state(obs):
     state = np.array(obs)
     state = state.transpose((2, 0, 1))
-    state = torch.from_numpy(state)
+    state = torch.from_numpy(state).float()
     return state.unsqueeze(0)
 
 def convert_action(action):
@@ -48,15 +48,20 @@ def train(env, n_episodes, render=False):
             action_info = env.step(conv_action)
             obs = action_info[brain_name].visual_observations[0][0]
             reward = action_info[brain_name].rewards[0]
-            score += reward
             done   = action_info[brain_name].local_done[0]
 
             #total_reward += reward
-
+            next_state = get_state(obs)
+            """
             if not done:
                 next_state = get_state(obs)
             else:
                 next_state = None
+            """
+
+            intrinsic_reward = agent.compute_intrinsic_reward(state, next_state, action)
+            reward = reward + intrinsic_reward
+            score += reward
 
             reward = torch.tensor([reward], device=device)
 
@@ -96,7 +101,7 @@ if __name__ == '__main__':
     RENDER = False
     lr = 1e-4
     INITIAL_MEMORY = 10000
-    agent = agent.Agent(action_size=9)
+    agent = agent.Agent(state_size=84*84*3 ,action_size=9)
     env=UnityEnvironment(file_name=env_path) 
     # train model
     train(env, 400)

@@ -19,7 +19,6 @@ EPS_START = 1
 EPS_END = 0.02
 EPS_DECAY = 1000000
 INITIAL_MEMORY = 10000
-BATCH_SIZE = 32
 MEMORY_SIZE = 10 * INITIAL_MEMORY
 GAMMA = 0.99
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -31,7 +30,7 @@ Transition = namedtuple('Transion',
 class Agent():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, action_size):
+    def __init__(self, state_size, action_size):
         """Initialize an Agent object.
         
         Params
@@ -40,23 +39,28 @@ class Agent():
             action_size (int): dimension of each action
             seed (int): random seed
         """
+        self.state_size = state_size
         self.action_size = action_size
         self.steps_done = 0
 
-        # Q-Network
         self.policy_net = DQN(action_size).to(device)
         self.target_net = DQN(action_size).to(device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LR)
+        self.icm = ICMModel(state_size, action_size)
+        #self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LR)
+        self.ce = nn.CrossEntropyLoss()
+        self.forward_mse = nn.MSELoss()
+        self.optimizer = optim.Adam(list(self.policy_net.parameters()) + list(self.icm.parameters()),
+                                    lr=LR)
 
         # Replay memory
         self.memory = ReplayMemory(MEMORY_SIZE)
         #self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
-        
+        self.batch_size = 32 
+        self.eta = 0.01
 
-    
 
     def select_action(self, state):
         
@@ -72,9 +76,9 @@ class Agent():
 
         
     def optimize_model(self):
-        if len(self.memory) < BATCH_SIZE:
+        if len(self.memory) < self.batch_size:
             return
-        transitions = self.memory.sample(BATCH_SIZE)
+        transitions = self.memory.sample(self.batch_size)
         """
         zip(*transitions) unzips the transitions into
         Transition(*) creates new named tuple
@@ -100,11 +104,30 @@ class Agent():
         reward_batch = torch.cat(rewards)
         state_action_values = self.policy_net(state_batch).gather(1, action_batch)
         
-        next_state_values = torch.zeros(BATCH_SIZE, device=device)
+        next_state_values = torch.zeros(self.batch_size, device=device)
         next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+
+        # --------------------------------------------------------------------------------
+        # for Curiosity-driven
+        action_onehot = torch.FloatTensor(self.batch_size, self.action_size)
+        action_onehot.zero_()
+        action_onehot.scatter_(1, action_batch.view(-1, 1), 1)
+        real_next_state_feature, pred_next_state_feature, pred_action = self.icm([state_batch, non_final_next_states, action_onehot])
+
+        inverse_loss = self.ce(pred_action, action_batch)
+
+        forward_loss = self.forward_mse(pred_next_state_feature, real_next_state_feature.detach())
+        # ---------------------------------------------------------------------------------
+
         
-        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+        #loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+
+        #actor_loss = -torch.min(surr1, surr2).mean() こんな感じで, dqn lossを作ればいける。
+
+        # rewardは上でどこかに入れてしまえばok. 
+        dqn_loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+        loss = dqn_loss + forward_loss + inverse_loss
         
         self.optimizer.zero_grad()
         loss.backward()
@@ -114,15 +137,20 @@ class Agent():
 
     ## intrinsic reward in progress...
     def compute_intrinsic_reward(self, state, next_state, action):
-        state = torch.FloatTensor(state).to(self.device)
-        next_state = torch.FloatTensor(next_state).to(self.device)
-        action = torch.LongTensor(action).to(self.device)
+        state = torch.FloatTensor(state)
+        next_state = torch.FloatTensor(next_state)
+        action = torch.LongTensor(action)
 
-        action_onehot = torch.FloatTensor(len(action), self.output_size).to(self.device)
+        action_onehot = torch.FloatTensor(len(action), self.action_size)
         action_onehot.zero_()
         action_onehot.scatter_(1, action.view(len(action), -1), 1)
 
         real_next_state_feature, pred_next_state_feature, pred_action = self.icm([state, next_state, action_onehot])
         intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='none').mean(-1)
         return intrinsic_reward.data.cpu().numpy()
+
+
+
+
+
 
