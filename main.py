@@ -99,4 +99,5 @@ if __name__ == '__main__':
     agent = agent.Agent(action_size=9)
     env=UnityEnvironment(file_name=env_path) 
     # train model
-    train(env, 400)
+    train(env, 200)
+    torch.save(agent.policy_net.state_dict(), "./models/dqn/dqn.pt")
