@@ -96,8 +96,7 @@ class Agent():
             tuple(map(lambda s: s is not None, batch.next_state)),
             device=device, dtype=torch.uint8)
         
-        non_final_next_states = torch.cat([s for s in batch.next_state
-                                           if s is not None]).to(device)
+        non_final_next_states = torch.cat([s for s in batch.next_stateif s is not None]).to(device)
     
         state_batch = torch.cat(batch.state).to(device)
         action_batch = torch.cat(actions)
@@ -114,18 +113,11 @@ class Agent():
         action_onehot.zero_()
         action_onehot.scatter_(1, action_batch.view(-1, 1), 1)
         real_next_state_feature, pred_next_state_feature, pred_action = self.icm([state_batch, non_final_next_states, action_onehot])
-
-        inverse_loss = self.ce(pred_action, action_batch)
-
+        inverse_loss = self.ce(pred_action, torch.squeeze(action_batch))
         forward_loss = self.forward_mse(pred_next_state_feature, real_next_state_feature.detach())
         # ---------------------------------------------------------------------------------
 
-        
         #loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
-
-        #actor_loss = -torch.min(surr1, surr2).mean() こんな感じで, dqn lossを作ればいける。
-
-        # rewardは上でどこかに入れてしまえばok. 
         dqn_loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
         loss = dqn_loss + forward_loss + inverse_loss
         
@@ -148,9 +140,3 @@ class Agent():
         real_next_state_feature, pred_next_state_feature, pred_action = self.icm([state, next_state, action_onehot])
         intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='none').mean(-1)
         return intrinsic_reward.data.cpu().numpy()
-
-
-
-
-
-
